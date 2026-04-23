@@ -1,0 +1,127 @@
+---
+const { pathname } = Astro.url;
+
+// Navigasi standar yang muncul untuk semua orang
+const commonNav = [
+  { name: 'Home', href: '/', icon: '🏠' },
+  { name: 'History', href: '/history', icon: '🕒' },
+];
+---
+
+<aside class="w-64 min-h-screen bg-slate-900 border-r border-slate-800 flex flex-col fixed left-0 top-0 z-50">
+  <div class="p-6">
+    <h1 class="text-xl font-bold text-blue-400 flex items-center gap-2">
+      <span class="text-2xl">🌬️</span> AirQ-Forecaster
+    </h1>
+    <p class="text-[10px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">Cloud Monitoring</p>
+  </div>
+
+  <nav class="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
+    <div>
+        <p class="text-[10px] font-bold text-slate-600 uppercase px-4 mb-2 tracking-widest">Main Menu</p>
+        <div class="space-y-1">
+            {commonNav.map((item) => (
+                <a href={item.href} class={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${pathname === item.href ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                    <span class="text-lg">{item.icon}</span>
+                    <span class="font-medium text-sm">{item.name}</span>
+                </a>
+            ))}
+        </div>
+    </div>
+
+    <div id="admin-section" class="hidden">
+        <p class="text-[10px] font-bold text-indigo-500 uppercase px-4 mb-2 tracking-widest">Administrator</p>
+        <a href="/admin/devices" class={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${pathname === '/admin/devices' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <span class="text-lg">➕</span>
+            <span class="font-medium text-sm">Add New Devices</span>
+        </a>
+    </div>
+
+    <div id="user-section" class="hidden">
+        <p class="text-[10px] font-bold text-blue-500 uppercase px-4 mb-2 tracking-widest">My Devices</p>
+        <div id="sidebar-device-list" class="space-y-1">
+            <p class="text-[10px] text-slate-600 px-4 italic">Fetching devices...</p>
+        </div>
+    </div>
+
+    <div class="pt-4 border-t border-slate-800">
+        <a href="/settings" class={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${pathname === '/settings' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <span class="text-lg">⚙️</span>
+            <span class="font-medium text-sm">Settings</span>
+        </a>
+    </div>
+  </nav>
+
+  <div class="p-4 bg-slate-950/50 border-t border-slate-800">
+    <div class="flex items-center gap-3 p-2">
+      <div id="avatar-box" class="w-10 h-10 shrink-0 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-inner">
+        ??
+      </div>
+      <div class="overflow-hidden">
+        <p id="profile-name" class="text-sm font-bold truncate text-slate-200">Loading...</p>
+        <p id="profile-role" class="text-[9px] text-slate-500 uppercase font-black tracking-tighter">Please login</p>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="w-64 h-full shrink-0"></div>
+
+<script>
+    function parseJwt(token) {
+        try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; }
+    }
+
+    async function loadSidebarLogic() {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const user = parseJwt(token);
+        const adminSection = document.getElementById('admin-section');
+        const userSection = document.getElementById('user-section');
+        const currentDeviceId = localStorage.getItem('device_id');
+
+        if (!user) return;
+
+        // Update Profile Info
+        document.getElementById('profile-name').innerText = user.sub;
+        document.getElementById('avatar-box').innerText = user.sub.substring(0, 2).toUpperCase();
+
+        if (user.is_admin) {
+            // JIKA ADMIN: Munculkan menu Add Devices
+            adminSection.classList.remove('hidden');
+            document.getElementById('profile-role').innerText = "System Administrator";
+            document.getElementById('avatar-box').classList.replace('bg-blue-600', 'bg-indigo-600');
+        } else {
+            // JIKA USER: Munculkan Daftar Device
+            userSection.classList.remove('hidden');
+            document.getElementById('profile-role').innerText = "Standard User";
+            
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/devices', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const devices = await res.json();
+                const listContainer = document.getElementById('sidebar-device-list');
+
+                if (devices.length > 0) {
+                    listContainer.innerHTML = devices.map(d => `
+                        <button 
+                            onclick="localStorage.setItem('device_id', '${d.id}'); localStorage.setItem('device_name', '${d.device_name}'); window.location.reload();"
+                            class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs transition-all ${currentDeviceId == d.id ? 'bg-blue-500/10 text-blue-400 font-bold border border-blue-500/20' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}"
+                        >
+                            <span class="${currentDeviceId == d.id ? 'animate-pulse' : ''}">📡</span>
+                            <span class="truncate">${d.device_name}</span>
+                        </button>
+                    `).join('');
+                } else {
+                    listContainer.innerHTML = '<p class="text-[10px] text-slate-600 px-4 italic">No devices assigned.</p>';
+                }
+            } catch (err) {
+                console.error("Sidebar Device Fetch Error", err);
+            }
+        }
+    }
+
+    loadSidebarLogic();
+</script>

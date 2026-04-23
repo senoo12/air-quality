@@ -1,0 +1,20 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Riwayat Sensor">
+	<h1 class="text-2xl font-bold mb-6">Log Data Sensor</h1>
+	<div class="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+		<table class="w-full text-left">
+			<thead class="bg-gray-700 text-gray-300 text-sm">
+				<tr>
+					<th class="p-4">Waktu</th>
+					<th class="p-4">Suhu</th>
+					<th class="p-4">Kelembapan</th>
+					<th class="p-4">MQ135</th>
+				</tr>
+			</thead>
+			<tbody id="history-body" class="divide-y divide-gray-700">
+				</tbody>
+		</table>
+	</div>
+</Layout>

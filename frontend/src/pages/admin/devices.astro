@@ -1,0 +1,146 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Admin Panel | Device Management">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-10">
+            <h1 class="text-3xl font-bold">Device Management</h1>
+            <p class="text-gray-400">Daftarkan alat IoT baru dan tautkan ke akun mahasiswa.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1">
+                <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl sticky top-8">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <span class="text-blue-400">➕</span> Registrasi Alat
+                    </h2>
+                    <form id="addDeviceForm" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Perangkat</label>
+                            <input type="text" id="deviceName" required placeholder="Contoh: ESP32-Seno-Kamar"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                       <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pilih Pemilik Perangkat</label>
+                            <select id="targetUserId" required
+                                class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-gray-200 appearance-none cursor-pointer">
+                                <option value="" disabled selected>Pilih Mahasiswa...</option>
+                                </select>
+                        </div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20">
+                            Tautkan Perangkat
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2">
+                <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-xl">
+                    <div class="p-6 border-b border-gray-700 flex justify-between items-center">
+                        <h2 class="font-bold">Daftar Semua Perangkat</h2>
+                        <span class="bg-blue-500/10 text-blue-400 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-tighter border border-blue-500/20">System Wide</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-900/50 text-gray-500 text-xs uppercase font-bold">
+                                <tr>
+                                    <th class="p-4">ID</th>
+                                    <th class="p-4">Nama Alat</th>
+                                    <th class="p-4">User ID Pemilik</th>
+                                    <th class="p-4 text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="device-table-body" class="divide-y divide-gray-700/50">
+                                <tr>
+                                    <td colspan="4" class="p-8 text-center text-gray-500 italic">Memuat data perangkat...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('addDeviceForm') as HTMLFormElement;
+        const token = localStorage.getItem('token');
+        const userSelect = document.getElementById('targetUserId') as HTMLSelectElement;
+
+        async function fetchUsers() {
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const users = await res.json();
+                
+                if (res.ok && userSelect) {
+                    // Bersihkan dropdown dan isi dengan data asli
+                    userSelect.innerHTML = '<option value="" disabled selected>Pilih Mahasiswa...</option>';
+                    users.forEach((user: any) => {
+                        const option = document.createElement('option');
+                        option.value = user.id; // Nilai yang dikirim tetap ID
+                        option.textContent = `${user.username} (ID: ${user.id})`; // Yang dilihat Admin adalah Username
+                        userSelect.appendChild(option);
+                    });
+                }
+            } catch (err) {
+                console.error("Gagal mengambil daftar user", err);
+            }
+        }
+
+        // 1. Fungsi Fetch Data Perangkat (Untuk Admin bisa lihat semua)
+        // Catatan: Kamu perlu buat endpoint GET /admin/devices di FastAPI yang mengembalikan SEMUA device
+        async function fetchAllDevices() {
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/devices', { // Sementara pakai endpoint ini
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const devices = await res.json();
+                const tbody = document.getElementById('device-table-body')!;
+                
+                tbody.innerHTML = devices.map((d: any) => `
+                    <tr class="hover:bg-gray-700/30 transition-colors">
+                        <td class="p-4 font-mono text-blue-400">${d.id}</td>
+                        <td class="p-4 font-medium text-gray-200">${d.device_name}</td>
+                        <td class="p-4 font-mono text-gray-400">User #${d.user_id}</td>
+                        <td class="p-4 text-center">
+                            <span class="bg-green-500/10 text-green-500 text-[10px] px-2 py-1 rounded-full font-bold uppercase">Active</span>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) { console.error(err); }
+        }
+
+        // 2. Fungsi Tambah Device
+        form?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const deviceName = (document.getElementById('deviceName') as HTMLInputElement).value;
+            const targetId = (document.getElementById('targetUserId') as HTMLInputElement).value;
+
+            try {
+                const res = await fetch(`http://localhost:8000/api/v1/devices?user_target_id=${targetId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ device_name: deviceName })
+                });
+
+                if (res.ok) {
+                    alert('Berhasil mendaftarkan perangkat!');
+                    form.reset();
+                    fetchAllDevices();
+                } else {
+                    const err = await res.json();
+                    alert('Gagal: ' + err.detail);
+                }
+            } catch (err) { alert('Terjadi kesalahan koneksi.'); }
+        });
+
+        fetchAllDevices();
+        fetchUsers();
+    </script>
+</Layout>

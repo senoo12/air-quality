@@ -1,0 +1,133 @@
+---
+// Import global CSS jika perlu, atau pastikan Tailwind sudah aktif
+import '../styles/global.css';
+---
+
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | AirQ Forecaster</title>
+    <script is:inline>
+        if (localStorage.getItem('token')) {
+            window.location.href = '/';
+        }
+    </script>
+</head>
+<body class="bg-[#0f172a] text-slate-200 flex items-center justify-center min-h-screen selection:bg-blue-500/30">
+    
+    <div class="fixed inset-0 overflow-hidden -z-10">
+        <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px]"></div>
+        <div class="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-600/20 blur-[120px]"></div>
+    </div>
+
+    <div class="w-full max-w-md px-6">
+        <div class="bg-slate-800/50 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-slate-700/50">
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/20 mb-4">
+                    <span class="text-3xl">🌬️</span>
+                </div>
+                <h1 class="text-3xl font-extrabold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+                    AirQ login
+                </h1>
+                <p class="text-slate-400 text-sm mt-2">Masuk ke sistem monitoring terpadu</p>
+            </div>
+
+            <div id="errorMessage" class="hidden mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-shake">
+                Username atau password salah.
+            </div>
+
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 ml-1">Username</label>
+                    <div class="relative group">
+                        <input type="text" id="username" name="username" required
+                            class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl p-4 pl-5 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600 group-hover:border-slate-600" 
+                            placeholder="Masukkan username kamu..."/>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 ml-1">Password</label>
+                    <div class="relative group">
+                        <input type="password" id="password" name="password" required
+                            class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl p-4 pl-5 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600 group-hover:border-slate-600" 
+                            placeholder="••••••••"/>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn"
+                    class="relative w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 overflow-hidden group">
+                    <span id="btnText">Masuk Sekarang</span>
+                    <div id="btnLoader" class="hidden w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                </button>
+            </form>
+
+            <p class="text-center text-slate-500 text-xs mt-8">
+                &copy; 2026 AirQ Forecaster &bull; UNJ Semester 6
+            </p>
+        </div>
+    </div>
+
+    <style>
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.3s ease-in-out; }
+    </style>
+
+    <script>
+        const loginForm = document.getElementById('loginForm') as HTMLFormElement;
+        const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+        const btnText = document.getElementById('btnText') as HTMLElement;
+        const btnLoader = document.getElementById('btnLoader') as HTMLElement;
+        const errorDiv = document.getElementById('errorMessage') as HTMLElement;
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // UI State: Loading
+            submitBtn.disabled = true;
+            btnText.classList.add('opacity-50');
+            btnLoader.classList.remove('hidden');
+            errorDiv.classList.add('hidden');
+
+            const username = (document.getElementById('username') as HTMLInputElement).value;
+            const password = (document.getElementById('password') as HTMLInputElement).value;
+
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('password', password);
+
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                    window.location.href = '/'; 
+                } else {
+                    const errorData = await response.json();
+                    errorDiv.innerText = errorData.detail || 'Login gagal, periksa kembali akun anda.';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorDiv.innerText = 'Koneksi ke server terputus.';
+                errorDiv.classList.remove('hidden');
+            } finally {
+                // UI State: Reset
+                submitBtn.disabled = false;
+                btnText.classList.remove('opacity-50');
+                btnLoader.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

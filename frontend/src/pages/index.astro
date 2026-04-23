@@ -1,0 +1,206 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Dashboard - Air Quality">
+    <div id="main-content">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold tracking-tight text-white">Ringkasan Kualitas Udara</h1>
+            <p class="text-slate-400 mt-1">
+                Monitoring Perangkat: <span id="device-name" class="text-blue-400 font-mono">Memuat...</span>
+                <span class="mx-2 text-slate-700">|</span>
+                ID: <span id="device-display" class="font-mono text-slate-500">--</span>
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-3xl shadow-xl relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                    <span class="text-6xl">📅</span>
+                </div>
+                <h2 class="text-sm font-semibold uppercase tracking-widest opacity-80 text-white">Prediksi Besok</h2>
+                <div class="mt-6">
+                    <span class="text-5xl font-black text-white" id="forecast-label">---</span>
+                    <p class="mt-3 text-sm opacity-70 flex items-center gap-2 text-white">
+                        <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                        Berdasarkan tren historis 24 jam
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
+                <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-500">Status Saat Ini (TSC)</h2>
+                <div class="mt-6 flex items-center gap-5">
+                    <div id="status-indicator" class="w-5 h-5 rounded-full bg-slate-600 shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-all duration-500"></div>
+                    <span class="text-4xl font-black text-slate-100" id="tsc-label">Menganalisis...</span>
+                </div>
+                <p class="mt-3 text-xs text-slate-500 font-medium italic">Update otomatis setiap kali sensor mengirim data</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+            <div class="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 hover:border-blue-500/50 transition-colors">
+                <p class="text-xs font-bold text-slate-500 uppercase mb-2">Suhu Lingkungan</p>
+                <div class="flex items-end gap-2">
+                    <span class="text-4xl font-bold text-white" id="temp-val">--</span>
+                    <span class="text-xl text-slate-400 mb-1">°C</span>
+                </div>
+            </div>
+            <div class="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 hover:border-blue-500/50 transition-colors">
+                <p class="text-xs font-bold text-slate-500 uppercase mb-2">Kelembapan Udara</p>
+                <div class="flex items-end gap-2">
+                    <span class="text-4xl font-bold text-white" id="hum-val">--</span>
+                    <span class="text-xl text-slate-400 mb-1">%</span>
+                </div>
+            </div>
+            <div class="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 hover:border-blue-500/50 transition-colors">
+                <p class="text-xs font-bold text-slate-500 uppercase mb-2">Kadar Gas (MQ135)</p>
+                <div class="flex items-end gap-2">
+                    <span class="text-4xl font-bold text-white" id="mq-val">--</span>
+                    <span class="text-xl text-slate-400 mb-1">ppm</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+		const API_BASE = "http://localhost:8000/api/v1";
+
+		// 1. PINDAHKAN LOGOUT KE LUAR (Agar bisa dipakai semua fungsi)
+		function logout() {
+			console.warn("Sesi berakhir. Kembali ke login...");
+			localStorage.removeItem('token');
+			localStorage.removeItem('refresh_token');
+			localStorage.removeItem('device_id');
+			window.location.href = '/login';
+		}
+
+		function parseJwt(token) {
+			try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; }
+		}
+
+		function isTokenExpired(token) {
+			try {
+				const payload = parseJwt(token);
+				if (!payload.exp) return true;
+				const now = Math.floor(Date.now() / 1000);
+				return payload.exp < now;
+			} catch (e) { return true; }
+		}
+
+		// 2. FUNGSI KHUSUS UNTUK REFRESH (Supaya tidak duplikasi kode)
+		async function attemptRefresh() {
+			const refreshToken = localStorage.getItem('refresh_token');
+			if (!refreshToken) return false;
+
+			try {
+				const res = await fetch(`${API_BASE}/refresh?refresh_token=${refreshToken}`, {
+					method: 'POST'
+				});
+				if (res.ok) {
+					const data = await res.json();
+					localStorage.setItem('token', data.access_token);
+					console.log("✅ Token berhasil diperbarui secara otomatis!");
+					return true;
+				}
+			} catch (err) {
+				console.error("Gagal refresh token:", err);
+			}
+			return false;
+		}
+
+		async function updateData(deviceId) {
+			let token = localStorage.getItem('token');
+			
+			// Helper untuk fetch dengan proteksi 401
+			const fetchProtected = async (url) => {
+				let res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+				
+				if (res.status === 401) {
+					const success = await attemptRefresh();
+					if (success) {
+						token = localStorage.getItem('token'); // Ambil token baru
+						res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+					} else {
+						logout();
+					}
+				}
+				return res;
+			};
+
+			try {
+				// AMBIL HISTORY
+				const resHistory = await fetchProtected(`${API_BASE}/sensors/history/${deviceId}?limit=1`);
+				const history = await resHistory.json();
+				if (history.length > 0) {
+					const latest = history[0];
+					document.getElementById('temp-val').innerText = latest.temperature.toFixed(1);
+					document.getElementById('hum-val').innerText = latest.humidity.toFixed(0);
+					document.getElementById('mq-val').innerText = latest.mq_value.toFixed(0);
+				}
+
+				// AMBIL STATUS TSC
+				const resStatus = await fetchProtected(`${API_BASE}/predictions/latest`);
+				if (resStatus.ok) {
+					const latestPred = await resStatus.json();
+					const tLabel = document.getElementById('tsc-label');
+					const indicator = document.getElementById('status-indicator');
+					const colorInfo = getStatusColor(latestPred.predicted_label);
+					tLabel.innerText = colorInfo.display;
+					tLabel.className = `text-4xl font-black transition-colors ${colorInfo.text}`;
+					indicator.className = `w-5 h-5 rounded-full shadow-lg transition-all ${colorInfo.bg}`;
+				}
+
+				// AMBIL FORECAST
+				const resForecast = await fetchProtected(`${API_BASE}/sensors/predict/${deviceId}`);
+				const forecastData = await resForecast.json();
+				document.getElementById('forecast-label').innerText = (!forecastData.status) ? forecastData.prediction.toUpperCase() : "PENDING";
+
+			} catch (err) {
+				console.error("Update error:", err);
+			}
+		}
+
+		function getStatusColor(label) {
+			const l = label.toLowerCase();
+			if (l === 'good') return { bg: 'bg-green-500 shadow-green-500/50', text: 'text-green-400', display: 'Good' };
+			if (l === 'moderate') return { bg: 'bg-yellow-500 shadow-yellow-500/50', text: 'text-yellow-400', display: 'Moderate' };
+			if (l === 'bad') return { bg: 'bg-red-500 shadow-red-500/50', text: 'text-red-400', display: 'Bad' };
+			return { bg: 'bg-slate-600', text: 'text-slate-100', display: label };
+		}
+
+		async function initDashboard() {
+			const token = localStorage.getItem('token');
+			const refreshToken = localStorage.getItem('refresh_token');
+
+			if (!token) return logout();
+
+			// JIKA TOKEN EXPIRED SAAT BARU BUKA, COBA REFRESH DULU, JANGAN LANGSUNG LOGOUT
+			if (isTokenExpired(token)) {
+				const success = await attemptRefresh();
+				if (!success) return logout();
+			}
+
+			try {
+				const res = await fetch(`${API_BASE}/devices`, {
+					headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+				});
+				const devices = await res.json();
+
+				if (devices.length > 0) {
+					const myDevice = devices[0];
+					document.getElementById('device-display').innerText = myDevice.id;
+					document.getElementById('device-name').innerText = myDevice.device_name;
+					localStorage.setItem('device_id', myDevice.id);
+					updateData(myDevice.id);
+				}
+			} catch (err) { console.error(err); }
+		}
+
+		initDashboard();
+		setInterval(() => {
+			const id = localStorage.getItem('device_id');
+			if(id) updateData(id);
+		}, 10000);
+	</script>
+</Layout>
